@@ -1,16 +1,8 @@
 
 #include "map.h"
+#include "object.c"
 
-uint_fast16_t	const
-	__width   =  224,
-	__height  =  288,
-	__scale   = 2,
-	levelcount = 4;
-uint_fast32_t	wy = 0;
-	time = 0, score = 0, hiscore = 0,
-	tmpax, tmpbx, tmpcx, tmpdx, tmpex;
-float tmpfx, ws = 2;
-uint_fast8_t active = 3,
+uint_fast8_t
 	levels[] = { // x >> 4
 		32,
 		50,
@@ -49,24 +41,18 @@ uint_fast8_t active = 3,
 		37,
 		50
 	};
+uint_fast16_t
+	levelcount = 36;
+uint_fast32_t	wy,
+	time, score, hiscore;
+float ws = 2;
 
-#define TEX_COUNT		4
-#define TEX_TEXT		0
-#define TEX_OBJECT		1
-#define TEX_PARTICLES	2
-#define TEX_TERRAIN		3
-GLuint Textures[TEX_COUNT];
-TEX tex[TEX_COUNT];
-char*texFn[] = {
-	"gfx\\text.png",
-	"gfx\\object.png",
-	"gfx\\particles.png",
-	"gfx\\terrain.png"
-};
+object*objects;
 
-int _player; // unassigned var, lol no Fs given
+
 //{
 #pragma region OBJECT CODE
+int _player; // unassigned var, lol no Fs given
 #define player objects[_player]
 #define this objects[id]
 // weird
@@ -85,7 +71,7 @@ void player_step(id)
 	this.y += key(VK_DOWN)  &&this.y<288-16;
 	glPushMatrix();
 		glTranslatef(this.x, this.y, 0);
-		drawImage(Textures[TEX_OBJECT],
+		drawImage(TEX_OBJECT,
 			0, 0,
 			16, 16,
 			0, 0,
@@ -93,7 +79,7 @@ void player_step(id)
 		glTranslatef(8, -88, 0);
 		for (int i = 0; i < 4; i++)
 		{
-			drawImage(Textures[TEX_OBJECT],
+			drawImage(TEX_OBJECT,
 				120, 0,
 				8, 8,
 				0, 0,
@@ -121,7 +107,7 @@ void toroid_step(int id)
 		if(this.props[1]<32)
 			this.props[1]++;
 	}
-	else // why is bitwise not not working
+	else
 	{
 		if(this.props[2] == 0)
 		{
@@ -140,7 +126,7 @@ void toroid_step(int id)
 			this.x -= 0.3f;
 		}
 	}
-	drawImage(Textures[TEX_OBJECT],
+	drawImage(TEX_OBJECT,
 		((this.props[1]>>2)&7)*12, 16,
 		12, 12,
 		floor(this.x), floor(this.y),
@@ -169,11 +155,11 @@ char WCstop = 0;
 void world_spawntoroids()
 {
 	int offset = 0;
-	for (int i = 0; i < 2 + rand() / (RAND_MAX/4); i++)
+	for (int i = 0; i < 2 + rand() / (RAND_MAX>>2); i++)
 	{
-		if (rand() > RAND_MAX/2)
+		if (rand() > RAND_MAX>>1)
 			offset = 120;
-		newobj(offset+16+(rand()/(RAND_MAX/64)),-16,toroid_create,toroid_step,nop);
+		newobj(offset+16+(rand()/(RAND_MAX>>6)),-16,toroid_create,toroid_step,nop);
 		offset = 0;
 	}
 }
@@ -196,21 +182,26 @@ void world_step(int id)
 		}
 		WCi++;
 	}
-	//if (wy % 3 == 0)
-		//world_spawntoroids();
 }
-
-//#define DBG
-float rate = 60.0f;
 
 GAMEFUNC void init()
 {
+	objects = calloc(sizeof(object),MAX_OBJECTS);
 	srand(GetTickCount());
 	newobj((224>>1) - 8, 288-40, player_create, player_step, nop);
 	newobj(0, 0, world_create, world_step, nop);
 }
 GAMEFUNC void loop()
 {
+	glClearColor (0.0f, 1.0f, 0.0f, 0.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0, __width, __height, 0, 0, 1e-38);
+	
+	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
 	{
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		
@@ -220,7 +211,7 @@ GAMEFUNC void loop()
 			{
 				glTranslatef(0, -224, 0);
 				if (wy < 940)
-				drawImage(Textures[TEX_TERRAIN],
+				drawImage(TEX_TERRAIN,
 					256, 0,
 					224, 224,
 					0, (wy/ws),
@@ -234,10 +225,10 @@ GAMEFUNC void loop()
 				offy = 0;
 				glTranslatef(0, -2048, 0);
 				// draw one image map
-				/*drawImage(Textures[TEX_TERRAIN],
+				/*drawImage(TEX_TERRAIN,
 					levels[i] << 4, 0,
 					tex[TEX_TERRAIN].w, tex[TEX_TERRAIN].h,
-					0, ftoui(wy/ws),
+					0, (uint)(wy/ws),
 					tex[TEX_TERRAIN].w, tex[TEX_TERRAIN].h);*/
 				glPushMatrix();
 					// tile drawing
@@ -245,14 +236,14 @@ GAMEFUNC void loop()
 					{
 						for (int j = 0; j < 28; j++)
 						{
-							if (wy + (k << 4) < (4096*(i+1))+512-128-45 ||
-								wy + (k << 4) > (4096*(i+1))+512+7+(52<<3))
+							if (wy + (k << 4) < ((i+1)<<12)+512-128-45 ||
+								wy + (k << 4) > ((i+1)<<12)+512+7+(52<<3))
 								break;
 							tile = (offx+j)+((k+offy)*mapw);
 							if (tile >= mapw * maph ||
 								j >= mapw || k >= maph)
 								goto outofboundsTiles;
-							drawImage(Textures[TEX_TERRAIN],
+							drawImage(TEX_TERRAIN,
 								(map[tile]&31)<<3, (map[tile]>>5)<<3, 8, 8,
 								j<<3, (wy/ws)+(k<<3),
 								8, 8);
@@ -281,5 +272,76 @@ GAMEFUNC void loop()
 		wy++;
 		time++; // ditching Clock, lol
 	}
-
+	
+	glDisable(GL_TEXTURE_2D);
+	glDisable(GL_BLEND);
 }
+
+void quit()
+{
+	free(objects);
+}
+
+/*void init()
+{
+	objects = calloc(sizeof(object),MAX_OBJECTS);
+}
+
+void loop()
+{
+	
+	glClearColor (0.0f, 1.0f, 0.0f, 0.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0, __width, __height, 0, 0, 1e-38);
+	
+	glPushMatrix();
+	
+	glColor3f(1.0f, 1.0f, 1.0f);
+	
+	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+	
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	drawImage(TEX_OBJECT,0,0,64,64,32,32,128,128);
+	
+	glBindTexture(GL_TEXTURE_2D, Textures[TEX_OBJECT]);
+	glRotatef(theta, 0.0f, 0.0f, 1.0f);
+	glBegin(GL_TRIANGLES);
+	glTexCoord2f(0, 0);
+	glVertex2f(-1.0f, 199.0f);
+	glTexCoord2f(1, 0);
+	glVertex2f(199.0f, 199.0f);
+	glTexCoord2f(0, 1);
+	glVertex2f(-1.0f, -1.0f);
+	
+	glTexCoord2f(1, 0);
+	glVertex2f(199.0f, 199.0f);
+	glTexCoord2f(0, 1);
+	glVertex2f(-1.0f, -1.0f);
+	glTexCoord2f(1, 1);
+	glVertex2f(199.0f, -1.0f); 
+	glEnd();
+	
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glColor3f(0.0f, 0.0f, 1.0f);
+	glLineWidth(3);
+	glBegin(GL_LINES);
+	glVertex2i(128, 64); 
+	glVertex2i(64, 128); 
+	glVertex2i(16, 16); 
+	glVertex2i(128, 16); 
+	glEnd();
+	
+	glDisable(GL_TEXTURE_2D);
+	glDisable(GL_BLEND);
+	
+	glPopMatrix();
+
+	SwapBuffers(hDC);
+
+	theta += 1.0f;
+}*/
+
